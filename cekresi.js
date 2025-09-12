@@ -3,6 +3,16 @@ import axios from 'axios';
 class TrackResi {
     constructor(resi) {
         this.resi = resi;
+
+        this.globalHeaders = {
+            'Accept': 'application/json, text/plain, */*',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Accept-Language': 'id-ID,id;q=0.9',
+            'Sec-Fetch-Site': 'same-origin',
+            'Sec-Fetch-Mode': 'cors',
+            'Sec-Fetch-Dest': 'empty',
+            'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36',
+        };
     }
 
     async spx() {
@@ -10,63 +20,86 @@ class TrackResi {
         try {
             const { data } = await axios.get(url, {
                 params: { spx_tn: this.resi, language_code: 'id' },
-                headers: {
-                    'Accept': 'application/json, text/plain, */*',
-                    'Accept-Encoding': 'gzip, deflate, br',
-                    'Accept-Language': 'id-ID,id;q=0.9',
-                    'Sec-Ch-Ua': '"Google Chrome";v="135", "Not-A.Brand";v="8", "Chromium";v="135"',
-                    'Sec-Ch-Ua-Mobile': '?0',
-                    'Sec-Fetch-Site': 'same-origin',
-                    'Sec-Fetch-Mode': 'cors',
-                    'Sec-Fetch-Dest': 'empty',
-                    'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36',
-                    'Referer': 'https://spx.co.id/track?SPXID052542346665',
-                    'Cookie': 'app_lang=id; _gcl_au=1.1.1890430435.1757512615; _med=refer; _ga=GA1.1.65444017.1757512616; _ga_3CRNHSSGVR=GS2.1.s1757512615$o1$g1$t1757512616$j59$l0$h0'
-                },
+                headers: this.globalHeaders,
             });
-            return data?.data;
+            if (data?.data) {
+                return { ekspedisi: 'SPX', data: data.data };
+            }
+            return null;
         } catch (error) {
             console.error('SPX Error:', error);
             return null;
         }
     }
 
-    async cekResiTokopedia() {
+    async tokped() {
         const url = `https://orchestra.tokopedia.com/orc/v1/microsite/tracking?airwaybill=${this.resi}`;
-
         const headers = {
-            'Accept': '*/*',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Accept-Language': 'id-ID,id;q=0.9',
-            'Sec-Ch-Ua': '"Google Chrome";v="135", "Not-A.Brand";v="8", "Chromium";v="135"',
-            'Sec-Ch-Ua-Mobile': '?0',
-            'Sec-Fetch-Site': 'same-site',
-            'Sec-Fetch-Mode': 'cors',
-            'Sec-Fetch-Dest': 'empty',
-            'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36',
+            ...this.globalHeaders,
             'Referer': 'https://www.tokopedia.com/',
             'Origin': 'https://www.tokopedia.com',
             'Priority': 'u=1, i',
         };
-
         try {
-            const response = await axios.get(url, { headers });
-            return response.data?.data;
+            const { data } = await axios.get(url, { headers });
+            if (data?.data?.[0]?.error_message === 'AWB Not Found') {
+                return null;
+            }
+            return { ekspedisi: 'Tokopedia', data: data?.data };
         } catch (error) {
-            console.error('Error tracking resi Tokopedia:', error);
-            throw error;
+            console.error('Tokopedia Error:', error);
+            return null;
         }
     }
 
+    async jtCargo() {
+        const url = 'https://office.jtcargo.co.id/official/waybill/trackingCustomerByWaybillNo';
+        const data = { waybillNo: this.resi, searchWaybillOrCustomerOrderId: "1" };
+
+        const headers = {
+            ...this.globalHeaders,
+            'Content-Type': 'application/json',
+        };
+
+        try {
+            const response = await axios.post(url, data, { headers });
+            if (response?.data?.data) {
+                if (response.data.data[0].details.length > 0) {
+                    return { ekspedisi: 'JTCargo', data: response.data };
+                }
+            }
+            return null;
+        } catch (error) {
+            console.error('JTCargo Error:', error);
+            return null;
+        }
+    }
+
+
     async run() {
-        if (this.resi.startsWith('SPXID')) {
-            const spxData = await this.spx();
-            return { valid: true, ekspedisi: 'SPX', data: spxData };
+
+        if (!this.resi) return { message: 'Silahkan input resi terlebih dahulu' }
+
+        const methods = [
+            { prefix: 'SPXID', method: this.spx.bind(this) },
+            { prefix: 'TKP', method: this.tokped.bind(this) }
+        ];
+
+        for (let { prefix, method } of methods) {
+            if (this.resi.startsWith(prefix)) {
+                const result = await method();
+                if (result) {
+                    return { valid: true, ekspedisi: result.ekspedisi, data: result.data };
+                }
+            }
         }
 
-        if (this.resi.startsWith('TKP')) {
-            const tkData = await this.cekResiTokopedia();
-            return { valid: true, ekspedisi: 'Rekomendasi Tokopedia', data: tkData };
+        const allMethods = [this.spx(), this.tokped(), this.jtCargo()];
+        for (let methodPromise of allMethods) {
+            const result = await methodPromise;
+            if (result) {
+                return { valid: true, ekspedisi: result.ekspedisi, data: result.data };
+            }
         }
 
         return { valid: false, message: 'Resi tidak dapat dilacak' };
@@ -74,5 +107,7 @@ class TrackResi {
 }
 
 
-const trackResi = await new TrackResi('RESIMU').run();
+const resi = ''; // MASUKKAN RESI DISINI (STRING) 
+const trackResi = await new TrackResi(resi).run();
+
 console.log(trackResi)
