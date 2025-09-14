@@ -1,8 +1,10 @@
 import axios from 'axios';
+import qs from 'qs';
 
 class TrackResi {
-    constructor(resi) {
+    constructor(resi, phone) {
         this.resi = resi;
+        this.phone = phone;
 
         this.globalHeaders = {
             'Accept': 'application/json, text/plain, */*',
@@ -64,7 +66,7 @@ class TrackResi {
         try {
             const response = await axios.post(url, data, { headers });
             if (response?.data?.data) {
-                if (response.data.data[0].details.length > 0) {
+                if (response.data.data[0]?.details?.length > 0) {
                     return { ekspedisi: 'JTCargo', data: response.data };
                 }
             }
@@ -76,9 +78,50 @@ class TrackResi {
     }
 
 
-    async run() {
 
+    async jnt() {
+
+        const url = 'https://jet.co.id/index/router/index.html';
+
+        const data = qs.stringify({
+            method: 'query/findTrack',
+            'data[billcode]': this.resi,
+            'data[lang]': 'en',
+            'data[source]': '3',
+            'data[phone]': this.phone?.slice(-4),
+            'data[type]': '1',
+            pId: 'a6a78ea1e8e8a30262293adf5a6c2c49',
+            pst: '311e78c3bdb5123322aac20525a12f75',
+        });
+
+        const headers = {
+            ...this.globalHeaders,
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            'Referer': `https://jet.co.id/track?bills=${this.resi}`,
+            'Origin': 'https://jet.co.id',
+            'X-Requested-With': 'XMLHttpRequest',
+            'x-simplypost-id': 'a6a78ea1e8e8a30262293adf5a6c2c49',
+            'x-simplypost-signature': '311e78c3bdb5123322aac20525a12f75',
+            'Cookie': 'HWWAFSESID=f5352731a19f61bb9d; HWWAFSESTIME=1757813060846; think_var=en-us; PHPSESSID=k3607artrueth3i1c2kep4uv45; _gid=GA1.3.878583306.1757813069; _gat_gtag_UA_158512495_1=1; _ga_HTHK2WZJ0T=GS2.1.s1757813069$o1$g1$t1757813110$j19$l0$h0; _ga=GA1.1.1628943577.1757813069'
+        };
+
+        try {
+            let response = await axios.post(url, data, { headers });
+            response = JSON.parse(response.data);
+            if (response?.success) {
+                return { ekspedisi: 'J&T', data: (response.data) };
+            }
+            return null;
+        } catch (error) {
+            console.error('J&T Error:', error.response?.data || error.message);
+            return null;
+        }
+    }
+
+    async run() {
         if (!this.resi) return { message: 'Silahkan input resi terlebih dahulu' }
+        if (!this.phone) return { message: 'Nohp diperlukan' }
+        if (!this.phone.startsWith('08')) return { message: 'Format nohp 08xxx' }
 
         const methods = [
             { prefix: 'SPXID', method: this.spx.bind(this) },
@@ -94,7 +137,13 @@ class TrackResi {
             }
         }
 
-        const allMethods = [this.spx(), this.tokped(), this.jtCargo()];
+        const allMethods = [
+            this.spx(),
+            this.tokped(),
+            this.jtCargo(),
+            this.jnt() 
+        ];
+
         for (let methodPromise of allMethods) {
             const result = await methodPromise;
             if (result) {
@@ -107,7 +156,9 @@ class TrackResi {
 }
 
 
-const resi = ''; // MASUKKAN RESI DISINI (STRING) 
-const trackResi = await new TrackResi(resi).run();
+const resi = ''; // Ganti dengan resi kamu
+const nohp = ''; // Ganti dengan nohp kamu
 
-console.log(trackResi)
+const trackResi = await new TrackResi(resi,nohp).run();
+
+console.log(trackResi);
