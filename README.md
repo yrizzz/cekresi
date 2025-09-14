@@ -9,4 +9,4 @@ Instalasi
 
 Untuk menginstal dan menggunakan CekResi, pastikan terinstall axios terlebih dahulu. Jika belum, kamu dapat menginstalnya menggunakan npm:
 
-<code>npm install axios</code>
+<code>npm install axios qs</code>
